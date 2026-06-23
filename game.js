@@ -32,21 +32,29 @@ let H = canvas.height;
 let HALF_W = W / 2;
 let HALF_H = H / 2;
 const FOV = Math.PI / 3;
-const NUM_RAYS = 360;
-const MAX_DEPTH = 20;
-const RAY_STEP = FOV / NUM_RAYS;
+let NUM_RAYS = 320;                 // Lowered default slightly for baseline mobile performance
+let RAY_STEP = FOV / NUM_RAYS;
 let WALL_SCALE = W / NUM_RAYS;
 let SCREEN_DIST = HALF_W / Math.tan(FOV / 2);
-const PLAYER_SPEED = 4.2;           // Increased from 3.1 - snappier movement
-const ROT_SPEED = 2.8;              // Increased from 2.2 - faster keyboard turning
+const PLAYER_SPEED = 4.2;           
+const ROT_SPEED = 2.8;              
 const ZOMBIE_SPEED = 0.72;
 const ATTACK_DISTANCE = 0.78;
 const CHASE_DISTANCE = 7;
-const MAX_CANVAS_DPR = 2;
+let MAX_CANVAS_DPR = 1.5;           // Capped from 2.0 to improve mobile fill-rate performance
 const SPRITE_OCCLUSION_PAD = 0.35;
-const TOUCH_LOOK_SENSITIVITY = 0.006;    // Increased from 0.0048 - better mobile swipe-look
-const MOUSE_DRAG_SENSITIVITY = 0.005;    // Increased from 0.0036 - smoother drag look
-const POINTER_LOCK_SENSITIVITY = 0.003;  // Increased from 0.0024 - snappier mouse lock
+const TOUCH_LOOK_SENSITIVITY = 0.0072;  // Increased for responsive small swipe movements
+const MOUSE_DRAG_SENSITIVITY = 0.005;    
+const POINTER_LOCK_SENSITIVITY = 0.003;  
+
+// Detection for FB Lite, Messenger, and low-end in-app WebViews
+const isLowEndWebView = /FB_IAB|FBAN|FBAV|Messenger|Instagram|WebView|Android/i.test(navigator.userAgent || "");
+
+if (isLowEndWebView) {
+  MAX_CANVAS_DPR = 1.0;  // Force low resolution to prevent GPU fill-rate lag in light webviews
+  NUM_RAYS = 180;        // Halve rays (180 instead of 320) for incredibly fast rendering
+  RAY_STEP = FOV / NUM_RAYS;
+}
 
 function resizeCanvas() {
   const rect = shell?.getBoundingClientRect() || canvas.getBoundingClientRect();
@@ -90,6 +98,7 @@ const level = [
   [1, 2, 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 1, 2, 1, 1, 2],
 ];
 
+const MAX_DEPTH = 20;
 const keys = new Set();
 const images = {};
 let audioContext;
@@ -1338,11 +1347,13 @@ window.addEventListener("blur", resetInputState);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) resetInputState();
 });
+// Standard Pointer events for modern mobile/desktop browsers
 canvas.addEventListener("pointerdown", beginLookDrag);
 canvas.addEventListener("pointermove", updateLookDrag);
 canvas.addEventListener("pointerup", endLookDrag);
 canvas.addEventListener("pointercancel", endLookDrag);
 canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
 document.addEventListener("pointerlockchange", () => {
   mouseLocked = document.pointerLockElement === canvas;
 });
@@ -1351,15 +1362,112 @@ document.addEventListener("mousemove", (event) => {
     player.angle = normalizeAngle(player.angle + event.movementX * POINTER_LOCK_SENSITIVITY);
   }
 });
+
 movePad.addEventListener("pointerdown", beginMoveTouch);
 movePad.addEventListener("pointermove", updateMoveTouch);
 movePad.addEventListener("pointerup", endMoveTouch);
 movePad.addEventListener("pointercancel", endMoveTouch);
+
 shootButton.addEventListener("pointerdown", (event) => {
   event.preventDefault();
   event.stopPropagation();
   fireWeapon();
 });
+
+// Touch Fallbacks for Facebook Lite & older mobile WebViews that throttle PointerEvents
+function getTouchPos(e) {
+  const touch = e.touches[0] || e.changedTouches[0];
+  return { clientX: touch.clientX, clientY: touch.clientY };
+}
+
+canvas.addEventListener("touchstart", (e) => {
+  const pos = getTouchPos(e);
+  beginLookDrag({
+    pointerId: 1,
+    pointerType: "touch",
+    clientX: pos.clientX,
+    clientY: pos.clientY,
+    button: 0,
+    cancelable: e.cancelable,
+    preventDefault() { if (e.cancelable) e.preventDefault(); }
+  });
+}, { passive: false });
+
+canvas.addEventListener("touchmove", (e) => {
+  const pos = getTouchPos(e);
+  updateLookDrag({
+    pointerId: 1,
+    pointerType: "touch",
+    clientX: pos.clientX,
+    clientY: pos.clientY,
+    cancelable: e.cancelable,
+    preventDefault() { if (e.cancelable) e.preventDefault(); }
+  });
+}, { passive: false });
+
+canvas.addEventListener("touchend", (e) => {
+  endLookDrag({
+    pointerId: 1,
+    cancelable: e.cancelable,
+    preventDefault() { if (e.cancelable) e.preventDefault(); }
+  });
+}, { passive: false });
+
+canvas.addEventListener("touchcancel", (e) => {
+  endLookDrag({
+    pointerId: 1,
+    cancelable: e.cancelable,
+    preventDefault() { if (e.cancelable) e.preventDefault(); }
+  });
+}, { passive: false });
+
+movePad.addEventListener("touchstart", (e) => {
+  const pos = getTouchPos(e);
+  beginMoveTouch({
+    pointerId: 2,
+    clientX: pos.clientX,
+    clientY: pos.clientY,
+    cancelable: e.cancelable,
+    preventDefault() { if (e.cancelable) e.preventDefault(); },
+    stopPropagation() { e.stopPropagation(); }
+  });
+}, { passive: false });
+
+movePad.addEventListener("touchmove", (e) => {
+  const pos = getTouchPos(e);
+  updateMoveTouch({
+    pointerId: 2,
+    clientX: pos.clientX,
+    clientY: pos.clientY,
+    cancelable: e.cancelable,
+    preventDefault() { if (e.cancelable) e.preventDefault(); },
+    stopPropagation() { e.stopPropagation(); }
+  });
+}, { passive: false });
+
+movePad.addEventListener("touchend", (e) => {
+  endMoveTouch({
+    pointerId: 2,
+    cancelable: e.cancelable,
+    preventDefault() { if (e.cancelable) e.preventDefault(); },
+    stopPropagation() { e.stopPropagation(); }
+  });
+}, { passive: false });
+
+movePad.addEventListener("touchcancel", (e) => {
+  endMoveTouch({
+    pointerId: 2,
+    cancelable: e.cancelable,
+    preventDefault() { if (e.cancelable) e.preventDefault(); },
+    stopPropagation() { e.stopPropagation(); }
+  });
+}, { passive: false });
+
+shootButton.addEventListener("touchstart", (e) => {
+  if (e.cancelable) e.preventDefault();
+  e.stopPropagation();
+  fireWeapon();
+}, { passive: false });
 
 // Character Selection Event Handling
 for (const button of characterButtons) {
