@@ -871,10 +871,10 @@ function projectSprite(entity, image, size = 0.85, tint = null) {
   const delta = angleDelta(theta, player.angle);
   const dist = Math.hypot(dx, dy);
 
-  // Skip sprites behind or too close to the player
+  // Skip sprites behind the player or impossibly close
   if (dist <= 0.01) return;
-  // Skip sprites outside the visible field of view (generous 1.5x for edge coverage)
-  if (Math.abs(delta) > FOV * 1.5) return;
+  // Skip sprites well outside the visible field of view
+  if (Math.abs(delta) > FOV * 0.92) return;
 
   const screenX = HALF_W + Math.tan(delta) * SCREEN_DIST;
   const projected = Math.max(6, (SCREEN_DIST / dist) * size);
@@ -883,14 +883,13 @@ function projectSprite(entity, image, size = 0.85, tint = null) {
   const x = screenX - width / 2;
   const y = HALF_H - height / 2 + projected * 0.22 + player.bob;
 
-  // --- Zombie entities ALWAYS render. No depth occlusion check. ---
-  // This guarantees zombies remain visible at every screen size,
-  // aspect ratio, DPR, and proximity distance including during attacks.
+  // Wall occlusion check using z-buffer:
+  // - Always skip if sprite is clearly behind a wall (any range)
+  // - BUT for zombies very close to the player (attack range < 1.5 units),
+  //   bypass the check because z-buffer precision breaks down at ultra-close range
   const isZombie = entity.spriteKind === "zombie";
-  if (!isZombie) {
-    // Only pickups use z-buffer depth occlusion
-    if (!spriteHasClearDepth(x, width, dist)) return;
-  }
+  const bypassOcclusion = isZombie && dist < 1.5;
+  if (!bypassOcclusion && !spriteHasClearDepth(x, width, dist)) return;
 
   ctx.save();
   if (image?.complete && image.naturalWidth > 0) {
