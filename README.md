@@ -2,6 +2,8 @@
 
 A browser-playable zombie school survival game built with HTML Canvas.
 
+Made by Dionimar Flores.
+
 ## Play Locally
 
 Open `index.html` through a local static server, then press **Start**.
