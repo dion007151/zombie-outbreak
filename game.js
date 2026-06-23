@@ -47,12 +47,13 @@ const TOUCH_LOOK_SENSITIVITY = 0.0072;  // Increased for responsive small swipe 
 const MOUSE_DRAG_SENSITIVITY = 0.005;    
 const POINTER_LOCK_SENSITIVITY = 0.003;  
 
-// Detection for FB Lite, Messenger, and low-end in-app WebViews
-const isLowEndWebView = /FB_IAB|FBAN|FBAV|Messenger|Instagram|WebView|Android/i.test(navigator.userAgent || "");
+// Enforce WebView optimization & lower DPR for ALL mobile/tablet devices
+// This ensures smooth rendering performance regardless of in-app browser engines (e.g. Facebook Lite)
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent || "");
 
-if (isLowEndWebView) {
-  MAX_CANVAS_DPR = 1.0;  // Force low resolution to prevent GPU fill-rate lag in light webviews
-  NUM_RAYS = 180;        // Halve rays (180 instead of 320) for incredibly fast rendering
+if (isMobileDevice) {
+  MAX_CANVAS_DPR = 1.0;  // Force standard resolution (no high-DPR lag)
+  NUM_RAYS = 180;        // Use fast 180-ray projection for smooth framerates on phones
   RAY_STEP = FOV / NUM_RAYS;
 }
 
@@ -1347,11 +1348,121 @@ window.addEventListener("blur", resetInputState);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) resetInputState();
 });
-// Standard Pointer events for modern mobile/desktop browsers
-canvas.addEventListener("pointerdown", beginLookDrag);
-canvas.addEventListener("pointermove", updateLookDrag);
-canvas.addEventListener("pointerup", endLookDrag);
-canvas.addEventListener("pointercancel", endLookDrag);
+// Conditional event attachment: touch listeners on mobile, pointer listeners on desktop
+if (window.ontouchstart !== undefined || navigator.maxTouchPoints > 0) {
+  // Mobile Touch Listeners (optimized to avoid PointerEvent wrapper overhead)
+  function getTouchPos(e) {
+    const touch = e.touches[0] || e.changedTouches[0];
+    return { clientX: touch.clientX, clientY: touch.clientY };
+  }
+
+  canvas.addEventListener("touchstart", (e) => {
+    const pos = getTouchPos(e);
+    beginLookDrag({
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: pos.clientX,
+      clientY: pos.clientY,
+      button: 0,
+      cancelable: e.cancelable,
+      preventDefault() { if (e.cancelable) e.preventDefault(); }
+    });
+  }, { passive: false });
+
+  canvas.addEventListener("touchmove", (e) => {
+    const pos = getTouchPos(e);
+    updateLookDrag({
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: pos.clientX,
+      clientY: pos.clientY,
+      cancelable: e.cancelable,
+      preventDefault() { if (e.cancelable) e.preventDefault(); }
+    });
+  }, { passive: false });
+
+  canvas.addEventListener("touchend", (e) => {
+    endLookDrag({
+      pointerId: 1,
+      cancelable: e.cancelable,
+      preventDefault() { if (e.cancelable) e.preventDefault(); }
+    });
+  }, { passive: false });
+
+  canvas.addEventListener("touchcancel", (e) => {
+    endLookDrag({
+      pointerId: 1,
+      cancelable: e.cancelable,
+      preventDefault() { if (e.cancelable) e.preventDefault(); }
+    });
+  }, { passive: false });
+
+  movePad.addEventListener("touchstart", (e) => {
+    const pos = getTouchPos(e);
+    beginMoveTouch({
+      pointerId: 2,
+      clientX: pos.clientX,
+      clientY: pos.clientY,
+      cancelable: e.cancelable,
+      preventDefault() { if (e.cancelable) e.preventDefault(); },
+      stopPropagation() { e.stopPropagation(); }
+    });
+  }, { passive: false });
+
+  movePad.addEventListener("touchmove", (e) => {
+    const pos = getTouchPos(e);
+    updateMoveTouch({
+      pointerId: 2,
+      clientX: pos.clientX,
+      clientY: pos.clientY,
+      cancelable: e.cancelable,
+      preventDefault() { if (e.cancelable) e.preventDefault(); },
+      stopPropagation() { e.stopPropagation(); }
+    });
+  }, { passive: false });
+
+  movePad.addEventListener("touchend", (e) => {
+    endMoveTouch({
+      pointerId: 2,
+      cancelable: e.cancelable,
+      preventDefault() { if (e.cancelable) e.preventDefault(); },
+      stopPropagation() { e.stopPropagation(); }
+    });
+  }, { passive: false });
+
+  movePad.addEventListener("touchcancel", (e) => {
+    endMoveTouch({
+      pointerId: 2,
+      cancelable: e.cancelable,
+      preventDefault() { if (e.cancelable) e.preventDefault(); },
+      stopPropagation() { e.stopPropagation(); }
+    });
+  }, { passive: false });
+
+  shootButton.addEventListener("touchstart", (e) => {
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+    fireWeapon();
+  }, { passive: false });
+} else {
+  // Desktop Pointer events
+  canvas.addEventListener("pointerdown", beginLookDrag);
+  canvas.addEventListener("pointermove", updateLookDrag);
+  canvas.addEventListener("pointerup", endLookDrag);
+  canvas.addEventListener("pointercancel", endLookDrag);
+  
+  movePad.addEventListener("pointerdown", beginMoveTouch);
+  movePad.addEventListener("pointermove", updateMoveTouch);
+  movePad.addEventListener("pointerup", endMoveTouch);
+  movePad.addEventListener("pointercancel", endMoveTouch);
+
+  shootButton.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    fireWeapon();
+  });
+}
+
 canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
 document.addEventListener("pointerlockchange", () => {
@@ -1362,112 +1473,6 @@ document.addEventListener("mousemove", (event) => {
     player.angle = normalizeAngle(player.angle + event.movementX * POINTER_LOCK_SENSITIVITY);
   }
 });
-
-movePad.addEventListener("pointerdown", beginMoveTouch);
-movePad.addEventListener("pointermove", updateMoveTouch);
-movePad.addEventListener("pointerup", endMoveTouch);
-movePad.addEventListener("pointercancel", endMoveTouch);
-
-shootButton.addEventListener("pointerdown", (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  fireWeapon();
-});
-
-// Touch Fallbacks for Facebook Lite & older mobile WebViews that throttle PointerEvents
-function getTouchPos(e) {
-  const touch = e.touches[0] || e.changedTouches[0];
-  return { clientX: touch.clientX, clientY: touch.clientY };
-}
-
-canvas.addEventListener("touchstart", (e) => {
-  const pos = getTouchPos(e);
-  beginLookDrag({
-    pointerId: 1,
-    pointerType: "touch",
-    clientX: pos.clientX,
-    clientY: pos.clientY,
-    button: 0,
-    cancelable: e.cancelable,
-    preventDefault() { if (e.cancelable) e.preventDefault(); }
-  });
-}, { passive: false });
-
-canvas.addEventListener("touchmove", (e) => {
-  const pos = getTouchPos(e);
-  updateLookDrag({
-    pointerId: 1,
-    pointerType: "touch",
-    clientX: pos.clientX,
-    clientY: pos.clientY,
-    cancelable: e.cancelable,
-    preventDefault() { if (e.cancelable) e.preventDefault(); }
-  });
-}, { passive: false });
-
-canvas.addEventListener("touchend", (e) => {
-  endLookDrag({
-    pointerId: 1,
-    cancelable: e.cancelable,
-    preventDefault() { if (e.cancelable) e.preventDefault(); }
-  });
-}, { passive: false });
-
-canvas.addEventListener("touchcancel", (e) => {
-  endLookDrag({
-    pointerId: 1,
-    cancelable: e.cancelable,
-    preventDefault() { if (e.cancelable) e.preventDefault(); }
-  });
-}, { passive: false });
-
-movePad.addEventListener("touchstart", (e) => {
-  const pos = getTouchPos(e);
-  beginMoveTouch({
-    pointerId: 2,
-    clientX: pos.clientX,
-    clientY: pos.clientY,
-    cancelable: e.cancelable,
-    preventDefault() { if (e.cancelable) e.preventDefault(); },
-    stopPropagation() { e.stopPropagation(); }
-  });
-}, { passive: false });
-
-movePad.addEventListener("touchmove", (e) => {
-  const pos = getTouchPos(e);
-  updateMoveTouch({
-    pointerId: 2,
-    clientX: pos.clientX,
-    clientY: pos.clientY,
-    cancelable: e.cancelable,
-    preventDefault() { if (e.cancelable) e.preventDefault(); },
-    stopPropagation() { e.stopPropagation(); }
-  });
-}, { passive: false });
-
-movePad.addEventListener("touchend", (e) => {
-  endMoveTouch({
-    pointerId: 2,
-    cancelable: e.cancelable,
-    preventDefault() { if (e.cancelable) e.preventDefault(); },
-    stopPropagation() { e.stopPropagation(); }
-  });
-}, { passive: false });
-
-movePad.addEventListener("touchcancel", (e) => {
-  endMoveTouch({
-    pointerId: 2,
-    cancelable: e.cancelable,
-    preventDefault() { if (e.cancelable) e.preventDefault(); },
-    stopPropagation() { e.stopPropagation(); }
-  });
-}, { passive: false });
-
-shootButton.addEventListener("touchstart", (e) => {
-  if (e.cancelable) e.preventDefault();
-  e.stopPropagation();
-  fireWeapon();
-}, { passive: false });
 
 // Character Selection Event Handling
 for (const button of characterButtons) {
