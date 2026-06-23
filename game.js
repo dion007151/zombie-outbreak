@@ -3,6 +3,10 @@ const ctx = canvas.getContext("2d");
 const menu = document.getElementById("menu");
 const startButton = document.getElementById("startButton");
 const continueButton = document.getElementById("continueButton");
+const touchControls = document.getElementById("touchControls");
+const movePad = document.getElementById("movePad");
+const moveKnob = document.getElementById("moveKnob");
+const shootButton = document.getElementById("shootButton");
 const music = document.getElementById("music");
 
 const W = canvas.width;
@@ -55,6 +59,10 @@ let lastGroan = 0;
 let nextGroan = 1800;
 let zBuffer = new Array(NUM_RAYS).fill(MAX_DEPTH);
 let particles = [];
+let lookDrag = null;
+let moveTouch = null;
+let virtualForward = 0;
+let virtualStrafe = 0;
 
 const player = {
   x: 1.5,
@@ -81,6 +89,10 @@ function loadImage(name, src) {
 
 function normalizeAngle(angle) {
   return (angle + Math.PI * 2) % (Math.PI * 2);
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function angleDelta(a, b) {
@@ -226,13 +238,18 @@ function startGame(fresh) {
   state = "playing";
   continueButton.disabled = false;
   menu.classList.add("hidden");
-  canvas.requestPointerLock?.();
+  touchControls.classList.remove("hidden");
+  if (matchMedia("(pointer: fine)").matches) {
+    canvas.requestPointerLock?.();
+  }
 }
 
 function showMenu() {
   state = "menu";
   menu.classList.remove("hidden");
+  touchControls.classList.add("hidden");
   continueButton.disabled = !gameStarted;
+  resetMoveControl();
   document.exitPointerLock?.();
 }
 
@@ -259,8 +276,12 @@ function castRay(angle) {
 function updatePlayer(dt) {
   let moveX = 0;
   let moveY = 0;
-  const forward = Number(keys.has("KeyW") || keys.has("ArrowUp")) - Number(keys.has("KeyS") || keys.has("ArrowDown"));
-  const strafe = Number(keys.has("KeyD")) - Number(keys.has("KeyA"));
+  const forward = clamp(
+    Number(keys.has("KeyW") || keys.has("ArrowUp")) - Number(keys.has("KeyS") || keys.has("ArrowDown")) + virtualForward,
+    -1,
+    1,
+  );
+  const strafe = clamp(Number(keys.has("KeyD")) - Number(keys.has("KeyA")) + virtualStrafe, -1, 1);
   if (!mouseLocked) {
     player.angle = normalizeAngle(player.angle + (Number(keys.has("ArrowRight")) - Number(keys.has("ArrowLeft"))) * ROT_SPEED * dt);
   }
@@ -611,6 +632,95 @@ function loop(time) {
   requestAnimationFrame(loop);
 }
 
+function rotateView(deltaX) {
+  player.angle = normalizeAngle(player.angle + deltaX * 0.0042);
+}
+
+function resetMoveControl() {
+  moveTouch = null;
+  virtualForward = 0;
+  virtualStrafe = 0;
+  moveKnob.style.transform = "translate(-50%, -50%)";
+}
+
+function updateMoveControl(clientX, clientY) {
+  const rect = movePad.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const radius = rect.width * 0.38;
+  const dx = clientX - centerX;
+  const dy = clientY - centerY;
+  const distance = Math.hypot(dx, dy);
+  const scale = distance > radius ? radius / distance : 1;
+  const knobX = dx * scale;
+  const knobY = dy * scale;
+  const deadZone = 0.12;
+  virtualStrafe = Math.abs(knobX / radius) < deadZone ? 0 : knobX / radius;
+  virtualForward = Math.abs(knobY / radius) < deadZone ? 0 : -knobY / radius;
+  moveKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+}
+
+function beginLookDrag(event) {
+  if (state !== "playing") return;
+  if (mouseLocked) {
+    if (event.button === 0) fireWeapon();
+    return;
+  }
+  if (event.button !== 0 && event.pointerType === "mouse") return;
+  event.preventDefault();
+  canvas.setPointerCapture?.(event.pointerId);
+  lookDrag = {
+    id: event.pointerId,
+    lastX: event.clientX,
+    startX: event.clientX,
+    startY: event.clientY,
+    moved: false,
+  };
+}
+
+function updateLookDrag(event) {
+  if (!lookDrag || lookDrag.id !== event.pointerId || state !== "playing") return;
+  event.preventDefault();
+  const dx = event.clientX - lookDrag.lastX;
+  lookDrag.lastX = event.clientX;
+  if (Math.hypot(event.clientX - lookDrag.startX, event.clientY - lookDrag.startY) > 6) {
+    lookDrag.moved = true;
+  }
+  rotateView(dx);
+}
+
+function endLookDrag(event) {
+  if (!lookDrag || lookDrag.id !== event.pointerId) return;
+  const wasTap = !lookDrag.moved;
+  lookDrag = null;
+  canvas.releasePointerCapture?.(event.pointerId);
+  if (state === "playing" && wasTap) fireWeapon();
+}
+
+function beginMoveTouch(event) {
+  if (state !== "playing") return;
+  event.preventDefault();
+  event.stopPropagation();
+  movePad.setPointerCapture?.(event.pointerId);
+  moveTouch = event.pointerId;
+  updateMoveControl(event.clientX, event.clientY);
+}
+
+function updateMoveTouch(event) {
+  if (moveTouch !== event.pointerId) return;
+  event.preventDefault();
+  event.stopPropagation();
+  updateMoveControl(event.clientX, event.clientY);
+}
+
+function endMoveTouch(event) {
+  if (moveTouch !== event.pointerId) return;
+  event.preventDefault();
+  event.stopPropagation();
+  movePad.releasePointerCapture?.(event.pointerId);
+  resetMoveControl();
+}
+
 window.addEventListener("keydown", (event) => {
   keys.add(event.code);
   if (event.code === "Escape" && state === "playing") showMenu();
@@ -619,9 +729,11 @@ window.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("keyup", (event) => keys.delete(event.code));
-canvas.addEventListener("click", () => {
-  if (state === "playing") fireWeapon();
-});
+canvas.addEventListener("pointerdown", beginLookDrag);
+canvas.addEventListener("pointermove", updateLookDrag);
+canvas.addEventListener("pointerup", endLookDrag);
+canvas.addEventListener("pointercancel", endLookDrag);
+canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 document.addEventListener("pointerlockchange", () => {
   mouseLocked = document.pointerLockElement === canvas;
 });
@@ -629,6 +741,15 @@ document.addEventListener("mousemove", (event) => {
   if (state === "playing" && mouseLocked) {
     player.angle = normalizeAngle(player.angle + event.movementX * 0.0024);
   }
+});
+movePad.addEventListener("pointerdown", beginMoveTouch);
+movePad.addEventListener("pointermove", updateMoveTouch);
+movePad.addEventListener("pointerup", endMoveTouch);
+movePad.addEventListener("pointercancel", endMoveTouch);
+shootButton.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  fireWeapon();
 });
 
 startButton.addEventListener("click", () => startGame(true));

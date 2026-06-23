@@ -14,6 +14,8 @@ body {
   display: grid;
   place-items: center;
   overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
   background:
     radial-gradient(circle at 50% 20%, rgba(120, 28, 28, 0.24), transparent 38%),
     linear-gradient(180deg, #07080a 0%, #151010 100%);
@@ -33,6 +35,9 @@ canvas {
   width: 100%;
   height: 100%;
   image-rendering: auto;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
 }
 
 .menu {
@@ -103,4 +108,77 @@ button:disabled {
   background: #2f3035;
   cursor: default;
   filter: none;
+}
+
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+}
+
+.touch-controls.hidden {
+  display: none;
+}
+
+.move-pad,
+.shoot-button {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.move-pad {
+  left: clamp(18px, 6vw, 52px);
+  bottom: clamp(18px, 7vw, 48px);
+  width: clamp(112px, 22vw, 150px);
+  aspect-ratio: 1;
+  border: 2px solid rgba(235, 235, 220, 0.45);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.34);
+  box-shadow: inset 0 0 22px rgba(255, 255, 255, 0.08), 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.move-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(235, 235, 220, 0.72);
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.16);
+}
+
+.shoot-button {
+  right: clamp(22px, 7vw, 58px);
+  bottom: clamp(30px, 9vw, 72px);
+  width: clamp(82px, 17vw, 118px);
+  aspect-ratio: 1;
+  min-height: 0;
+  border-radius: 50%;
+  border-color: rgba(255, 215, 99, 0.86);
+  background:
+    radial-gradient(circle at 50% 50%, #f7db66 0 17%, #c51f25 19% 58%, #541015 60% 100%);
+  box-shadow: 0 8px 0 rgba(40, 4, 8, 0.72), 0 0 22px rgba(200, 26, 31, 0.5);
+}
+
+.shoot-button:active {
+  transform: translateY(4px);
+  box-shadow: 0 4px 0 rgba(40, 4, 8, 0.72), 0 0 30px rgba(245, 203, 85, 0.72);
+}
+
+@media (pointer: coarse), (max-width: 820px) {
+  .touch-controls:not(.hidden) {
+    display: block;
+  }
+
+  .shell {
+    width: 100vw;
+    height: 100svh;
+    max-width: none;
+    aspect-ratio: auto;
+  }
 }
