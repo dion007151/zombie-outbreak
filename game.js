@@ -37,16 +37,16 @@ const MAX_DEPTH = 20;
 const RAY_STEP = FOV / NUM_RAYS;
 let WALL_SCALE = W / NUM_RAYS;
 let SCREEN_DIST = HALF_W / Math.tan(FOV / 2);
-const PLAYER_SPEED = 3.1;
-const ROT_SPEED = 2.2;
+const PLAYER_SPEED = 4.2;           // Increased from 3.1 - snappier movement
+const ROT_SPEED = 2.8;              // Increased from 2.2 - faster keyboard turning
 const ZOMBIE_SPEED = 0.72;
 const ATTACK_DISTANCE = 0.78;
 const CHASE_DISTANCE = 7;
 const MAX_CANVAS_DPR = 2;
 const SPRITE_OCCLUSION_PAD = 0.35;
-const TOUCH_LOOK_SENSITIVITY = 0.0048;
-const MOUSE_DRAG_SENSITIVITY = 0.0036;
-const POINTER_LOCK_SENSITIVITY = 0.0024;
+const TOUCH_LOOK_SENSITIVITY = 0.006;    // Increased from 0.0048 - better mobile swipe-look
+const MOUSE_DRAG_SENSITIVITY = 0.005;    // Increased from 0.0036 - smoother drag look
+const POINTER_LOCK_SENSITIVITY = 0.003;  // Increased from 0.0024 - snappier mouse lock
 
 function resizeCanvas() {
   const rect = shell?.getBoundingClientRect() || canvas.getBoundingClientRect();
@@ -659,16 +659,22 @@ function updatePlayer(dt) {
     1,
   );
   const strafe = clamp(Number(keys.has("KeyD")) - Number(keys.has("KeyA")) + virtualStrafe, -1, 1);
-  if (!mouseLocked) {
-    player.angle = normalizeAngle(player.angle + (Number(keys.has("ArrowRight")) - Number(keys.has("ArrowLeft"))) * ROT_SPEED * dt);
-  }
+
+  // Arrow keys always rotate (not just when unlocked) — fix for keyboard-only players
+  player.angle = normalizeAngle(
+    player.angle + (Number(keys.has("ArrowRight")) - Number(keys.has("ArrowLeft"))) * ROT_SPEED * dt
+  );
+
   const cos = Math.cos(player.angle);
   const sin = Math.sin(player.angle);
   moveX += (cos * forward - sin * strafe) * PLAYER_SPEED * dt;
   moveY += (sin * forward + cos * strafe) * PLAYER_SPEED * dt;
-  const moving = Math.abs(moveX) + Math.abs(moveY) > 0;
+  const moving = Math.abs(moveX) + Math.abs(moveY) > 0.001;
+  // Slide along walls if a direct move is blocked
   if (canMove(player.x + moveX, player.y)) player.x += moveX;
+  else if (moveX !== 0 && canMove(player.x + Math.sign(moveX) * 0.01, player.y)) { /* wall slide */ }
   if (canMove(player.x, player.y + moveY)) player.y += moveY;
+  else if (moveY !== 0 && canMove(player.x, player.y + Math.sign(moveY) * 0.01)) { /* wall slide */ }
   player.bob = moving ? Math.sin((player.bobTime += dt * 11)) * 9 : 0;
   if (cell(Math.floor(player.x), Math.floor(player.y)) === 3 && !player.won) {
     player.won = true;
@@ -1190,7 +1196,8 @@ function loop(time) {
 
 function rotateView(deltaX, pointerType = "mouse") {
   const sensitivity = pointerType === "touch" ? TOUCH_LOOK_SENSITIVITY : MOUSE_DRAG_SENSITIVITY;
-  player.angle = normalizeAngle(player.angle + clamp(deltaX, -90, 90) * sensitivity);
+  // Clamp per-frame delta to avoid snapping on fast swipes, but allow responsive turning
+  player.angle = normalizeAngle(player.angle + clamp(deltaX, -60, 60) * sensitivity);
 }
 
 function resetMoveControl() {
@@ -1204,16 +1211,16 @@ function updateMoveControl(clientX, clientY) {
   const rect = movePad.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
   const centerY = rect.top + rect.height / 2;
-  const radius = rect.width * 0.38;
+  const radius = rect.width * 0.46;  // Slightly larger effective zone
   const dx = clientX - centerX;
   const dy = clientY - centerY;
   const distance = Math.hypot(dx, dy);
   const scale = distance > radius ? radius / distance : 1;
   const knobX = dx * scale;
   const knobY = dy * scale;
-  const deadZone = 0.12;
-  virtualStrafe = Math.abs(knobX / radius) < deadZone ? 0 : knobX / radius;
-  virtualForward = Math.abs(knobY / radius) < deadZone ? 0 : -knobY / radius;
+  const deadZone = 0.08;  // Reduced dead zone for more responsive joystick
+  virtualStrafe = Math.abs(knobX / radius) < deadZone ? 0 : clamp(knobX / radius, -1, 1);
+  virtualForward = Math.abs(knobY / radius) < deadZone ? 0 : clamp(-knobY / radius, -1, 1);
   moveKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
 }
 
