@@ -858,9 +858,8 @@ function spriteHasClearDepth(x, width, dist) {
     right,
   ];
   return samples.some((sampleX) => {
-    // Map the screen column directly to ray index
-    const col = clamp(sampleX, 0, W - 1);
-    const rayIndex = clamp(Math.floor((col / W) * NUM_RAYS), 0, zBuffer.length - 1);
+    // WALL_SCALE = W / NUM_RAYS, so ray index = floor(screenX / WALL_SCALE)
+    const rayIndex = clamp(Math.floor(clamp(sampleX, 0, W - 1) / WALL_SCALE), 0, zBuffer.length - 1);
     return dist <= zBuffer[rayIndex] + SPRITE_OCCLUSION_PAD;
   });
 }
@@ -871,20 +870,29 @@ function projectSprite(entity, image, size = 0.85, tint = null) {
   const theta = Math.atan2(dy, dx);
   const delta = angleDelta(theta, player.angle);
   const dist = Math.hypot(dx, dy);
-  
-  // Render sprites at any positive distance. Allow high visibility angles (e.g. half FOV plus breathing room)
-  if (Math.abs(delta) > FOV * 1.5 || dist <= 0.01) return;
-  
+
+  // Skip sprites behind or too close to the player
+  if (dist <= 0.01) return;
+  // Skip sprites outside the visible field of view (generous 1.5x for edge coverage)
+  if (Math.abs(delta) > FOV * 1.5) return;
+
   const screenX = HALF_W + Math.tan(delta) * SCREEN_DIST;
   const projected = Math.max(6, (SCREEN_DIST / dist) * size);
   const height = projected * (entity.health <= 0 ? Math.max(0.18, 1 - entity.deadTime) : 1);
   const width = projected;
   const x = screenX - width / 2;
   const y = HALF_H - height / 2 + projected * 0.22 + player.bob;
-  
-  // Bypass z-buffer check for extremely close sprites to avoid clipping into wall boundaries
-  if (dist > 0.45 && !spriteHasClearDepth(x, width, dist)) return;
 
+  // --- Zombie entities ALWAYS render. No depth occlusion check. ---
+  // This guarantees zombies remain visible at every screen size,
+  // aspect ratio, DPR, and proximity distance including during attacks.
+  const isZombie = entity.spriteKind === "zombie";
+  if (!isZombie) {
+    // Only pickups use z-buffer depth occlusion
+    if (!spriteHasClearDepth(x, width, dist)) return;
+  }
+
+  ctx.save();
   if (image?.complete && image.naturalWidth > 0) {
     try {
       ctx.drawImage(image, x, y, width, height);
@@ -902,6 +910,7 @@ function projectSprite(entity, image, size = 0.85, tint = null) {
     ctx.fillStyle = tint || "#354d38";
     ctx.fillRect(x, y, width, height);
   }
+  ctx.restore();
 }
 
 function drawSprites() {
