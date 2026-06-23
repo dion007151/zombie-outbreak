@@ -660,9 +660,12 @@ function updatePlayer(dt) {
   );
   const strafe = clamp(Number(keys.has("KeyD")) - Number(keys.has("KeyA")) + virtualStrafe, -1, 1);
 
-  // Arrow keys always rotate (not just when unlocked) — fix for keyboard-only players
+  // Apply smooth look rotation (lerp accumulated touch/mouse swipe look delta)
+  const lookStep = virtualLookDeltaX * Math.min(1.0, dt * 25);
+  virtualLookDeltaX -= lookStep;
+  
   player.angle = normalizeAngle(
-    player.angle + (Number(keys.has("ArrowRight")) - Number(keys.has("ArrowLeft"))) * ROT_SPEED * dt
+    player.angle + lookStep + (Number(keys.has("ArrowRight")) - Number(keys.has("ArrowLeft"))) * ROT_SPEED * dt
   );
 
   const cos = Math.cos(player.angle);
@@ -1194,10 +1197,12 @@ function loop(time) {
   requestAnimationFrame(loop);
 }
 
+let virtualLookDeltaX = 0; // Smooth look accumulator for lerping
+let activeTouchCount = 0;
+
 function rotateView(deltaX, pointerType = "mouse") {
   const sensitivity = pointerType === "touch" ? TOUCH_LOOK_SENSITIVITY : MOUSE_DRAG_SENSITIVITY;
-  // Clamp per-frame delta to avoid snapping on fast swipes, but allow responsive turning
-  player.angle = normalizeAngle(player.angle + clamp(deltaX, -60, 60) * sensitivity);
+  virtualLookDeltaX += clamp(deltaX, -100, 100) * sensitivity;
 }
 
 function resetMoveControl() {
@@ -1211,14 +1216,14 @@ function updateMoveControl(clientX, clientY) {
   const rect = movePad.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
   const centerY = rect.top + rect.height / 2;
-  const radius = rect.width * 0.46;  // Slightly larger effective zone
+  const radius = rect.width * 0.46;
   const dx = clientX - centerX;
   const dy = clientY - centerY;
   const distance = Math.hypot(dx, dy);
   const scale = distance > radius ? radius / distance : 1;
   const knobX = dx * scale;
   const knobY = dy * scale;
-  const deadZone = 0.08;  // Reduced dead zone for more responsive joystick
+  const deadZone = 0.08;
   virtualStrafe = Math.abs(knobX / radius) < deadZone ? 0 : clamp(knobX / radius, -1, 1);
   virtualForward = Math.abs(knobY / radius) < deadZone ? 0 : clamp(-knobY / radius, -1, 1);
   moveKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
@@ -1226,13 +1231,19 @@ function updateMoveControl(clientX, clientY) {
 
 function beginLookDrag(event) {
   if (state !== "playing") return;
-  if (mouseLocked) {
-    if (event.button === 0) fireWeapon();
-    return;
+  
+  // Ignore mouse clicks other than left click
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+
+  // Prevent default to stop scrolling/pull-to-refresh on mobile WebViews
+  if (event.cancelable) event.preventDefault();
+
+  try {
+    canvas.setPointerCapture(event.pointerId);
+  } catch (e) {
+    // Fallback for older browsers or strict WebView environments
   }
-  if (event.button !== 0 && event.pointerType === "mouse") return;
-  event.preventDefault();
-  canvas.setPointerCapture?.(event.pointerId);
+
   lookDrag = {
     id: event.pointerId,
     lastX: event.clientX,
@@ -1244,50 +1255,70 @@ function beginLookDrag(event) {
 
 function updateLookDrag(event) {
   if (!lookDrag || lookDrag.id !== event.pointerId || state !== "playing") return;
-  event.preventDefault();
+  if (event.cancelable) event.preventDefault();
+  
   const dx = event.clientX - lookDrag.lastX;
   lookDrag.lastX = event.clientX;
-  if (Math.hypot(event.clientX - lookDrag.startX, event.clientY - lookDrag.startY) > 6) {
+  
+  if (Math.hypot(event.clientX - lookDrag.startX, event.clientY - lookDrag.startY) > 8) {
     lookDrag.moved = true;
   }
+  
   rotateView(dx, event.pointerType);
 }
 
 function endLookDrag(event) {
   if (!lookDrag || lookDrag.id !== event.pointerId) return;
+  if (event.cancelable) event.preventDefault();
+  
   const wasTap = !lookDrag.moved;
   lookDrag = null;
-  canvas.releasePointerCapture?.(event.pointerId);
-  if (state === "playing" && wasTap) fireWeapon();
+  
+  try {
+    canvas.releasePointerCapture(event.pointerId);
+  } catch (e) {}
+
+  if (state === "playing" && wasTap) {
+    fireWeapon();
+  }
 }
 
 function beginMoveTouch(event) {
   if (state !== "playing") return;
-  event.preventDefault();
+  if (event.cancelable) event.preventDefault();
   event.stopPropagation();
-  movePad.setPointerCapture?.(event.pointerId);
+  
+  try {
+    movePad.setPointerCapture(event.pointerId);
+  } catch (e) {}
+  
   moveTouch = event.pointerId;
   updateMoveControl(event.clientX, event.clientY);
 }
 
 function updateMoveTouch(event) {
   if (moveTouch !== event.pointerId) return;
-  event.preventDefault();
+  if (event.cancelable) event.preventDefault();
   event.stopPropagation();
   updateMoveControl(event.clientX, event.clientY);
 }
 
 function endMoveTouch(event) {
   if (moveTouch !== event.pointerId) return;
-  event.preventDefault();
+  if (event.cancelable) event.preventDefault();
   event.stopPropagation();
-  movePad.releasePointerCapture?.(event.pointerId);
+  
+  try {
+    movePad.releasePointerCapture(event.pointerId);
+  } catch (e) {}
+  
   resetMoveControl();
 }
 
 function resetInputState() {
   keys.clear();
   lookDrag = null;
+  virtualLookDeltaX = 0;
   resetMoveControl();
 }
 
