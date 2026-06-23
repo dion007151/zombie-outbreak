@@ -847,18 +847,20 @@ function drawWalls() {
 }
 
 function spriteHasClearDepth(x, width, dist) {
-  const left = Math.max(0, x);
-  const right = Math.min(W - 1, x + width);
+  const left = Math.max(0, Math.floor(x));
+  const right = Math.min(W - 1, Math.floor(x + width));
   if (right <= 0 || left >= W) return false;
   const samples = [
     left,
-    left + (right - left) * 0.25,
-    left + (right - left) * 0.5,
-    left + (right - left) * 0.75,
+    Math.floor(left + (right - left) * 0.25),
+    Math.floor(left + (right - left) * 0.5),
+    Math.floor(left + (right - left) * 0.75),
     right,
   ];
   return samples.some((sampleX) => {
-    const rayIndex = clamp(Math.floor(sampleX / WALL_SCALE), 0, zBuffer.length - 1);
+    // Map the screen column directly to ray index
+    const col = clamp(sampleX, 0, W - 1);
+    const rayIndex = clamp(Math.floor((col / W) * NUM_RAYS), 0, zBuffer.length - 1);
     return dist <= zBuffer[rayIndex] + SPRITE_OCCLUSION_PAD;
   });
 }
