@@ -1,0 +1,17 @@
+{
+  "name": "zombie-outbreak",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A browser-playable zombie school survival game.",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev",
+    "deploy": "vercel --prod --yes"
+  },
+  "keywords": [
+    "zombie",
+    "game",
+    "canvas",
+    "vercel"
+  ]
+}

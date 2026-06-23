@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zombie Outbreak</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="shell" aria-label="Zombie Outbreak game">
+      <canvas id="game" width="800" height="600"></canvas>
+
+      <section id="menu" class="menu">
+        <div class="brand">
+          <h1>Zombie Outbreak</h1>
+          <p>Survive the halls. Find the exit.</p>
+        </div>
+        <div class="actions">
+          <button id="startButton" type="button">Start</button>
+          <button id="continueButton" type="button" disabled>Continue</button>
+        </div>
+      </section>
+    </main>
+
+    <audio id="music" src="zombie bgm.mp3" preload="auto" loop></audio>
+    <script src="game.js"></script>
+  </body>
+</html>
