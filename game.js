@@ -1,29 +1,75 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const shell = document.querySelector(".shell");
 const menu = document.getElementById("menu");
-const startButton = document.getElementById("startButton");
-const continueButton = document.getElementById("continueButton");
 const touchControls = document.getElementById("touchControls");
 const movePad = document.getElementById("movePad");
 const moveKnob = document.getElementById("moveKnob");
 const shootButton = document.getElementById("shootButton");
 const music = document.getElementById("music");
 
-const W = canvas.width;
-const H = canvas.height;
-const HALF_W = W / 2;
-const HALF_H = H / 2;
+// Title Screen Redesign Elements
+const menuEffectsCanvas = document.getElementById("menuEffects");
+const menuEffectsCtx = menuEffectsCanvas ? menuEffectsCanvas.getContext("2d") : null;
+const playBtn = document.getElementById("playBtn");
+const settingsBtn = document.getElementById("settingsBtn");
+const exitBtn = document.getElementById("exitBtn");
+const characterSelectContainer = document.getElementById("characterSelectContainer");
+const mainMenuActions = document.getElementById("mainMenuActions");
+const settingsPanel = document.getElementById("settingsPanel");
+const confirmCharacterBtn = document.getElementById("confirmCharacterBtn");
+const backToMenuBtn = document.getElementById("backToMenuBtn");
+const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+const characterButtons = [...document.querySelectorAll(".character-option")];
+
+// Audio control elements
+const masterVolumeRange = document.getElementById("masterVolumeRange");
+const musicToggle = document.getElementById("musicToggle");
+const fxToggle = document.getElementById("fxToggle");
+
+let W = canvas.width;
+let H = canvas.height;
+let HALF_W = W / 2;
+let HALF_H = H / 2;
 const FOV = Math.PI / 3;
 const NUM_RAYS = 360;
 const MAX_DEPTH = 20;
 const RAY_STEP = FOV / NUM_RAYS;
-const WALL_SCALE = W / NUM_RAYS;
-const SCREEN_DIST = HALF_W / Math.tan(FOV / 2);
+let WALL_SCALE = W / NUM_RAYS;
+let SCREEN_DIST = HALF_W / Math.tan(FOV / 2);
 const PLAYER_SPEED = 3.1;
 const ROT_SPEED = 2.2;
 const ZOMBIE_SPEED = 0.72;
 const ATTACK_DISTANCE = 0.78;
 const CHASE_DISTANCE = 7;
+const MAX_CANVAS_DPR = 2;
+const SPRITE_OCCLUSION_PAD = 0.35;
+const TOUCH_LOOK_SENSITIVITY = 0.0048;
+const MOUSE_DRAG_SENSITIVITY = 0.0036;
+const POINTER_LOCK_SENSITIVITY = 0.0024;
+
+function resizeCanvas() {
+  const rect = shell?.getBoundingClientRect() || canvas.getBoundingClientRect();
+  const nextW = Math.max(320, Math.round(rect.width || window.innerWidth || 800));
+  const nextH = Math.max(240, Math.round(rect.height || window.innerHeight || 600));
+  const dpr = Math.max(1, Math.min(MAX_CANVAS_DPR, window.devicePixelRatio || 1));
+  const pixelW = Math.round(nextW * dpr);
+  const pixelH = Math.round(nextH * dpr);
+
+  W = nextW;
+  H = nextH;
+  HALF_W = W / 2;
+  HALF_H = H / 2;
+  WALL_SCALE = W / NUM_RAYS;
+  SCREEN_DIST = HALF_W / Math.tan(FOV / 2);
+
+  if (canvas.width !== pixelW || canvas.height !== pixelH) {
+    canvas.width = pixelW;
+    canvas.height = pixelH;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+}
 
 const level = [
   [1, 2, 1, 2, 1, 1, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1],
@@ -68,6 +114,7 @@ const player = {
   x: 1.5,
   y: 5.5,
   angle: 0,
+  character: "boy",
   health: 100,
   ammo: 90,
   bob: 0,
@@ -93,6 +140,15 @@ function normalizeAngle(angle) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function setCharacter(character) {
+  player.character = character;
+  for (const button of characterButtons) {
+    const selected = button.dataset.character === character;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
 }
 
 function angleDelta(a, b) {
@@ -152,16 +208,176 @@ function resetGame() {
   }));
 }
 
+// Layered horror sound system variables
+let windNode = null;
+let droneOscs = [];
+let sirenNode = null;
+let isAudioInitialized = false;
+
 function ensureAudio() {
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) return;
   if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    audioContext = new AudioCtor();
     masterGain = audioContext.createGain();
-    masterGain.gain.value = 0.52;
+    // Default master gain matches volume setting (0.5)
+    masterGain.gain.value = 0.5;
     masterGain.connect(audioContext.destination);
   }
   if (audioContext.state === "suspended") audioContext.resume();
-  music.volume = 0.28;
+
+  // Initialize Layered Ambient OST and Soundscapes
+  if (!isAudioInitialized) {
+    isAudioInitialized = true;
+    startProceduralWind();
+    startProceduralDrone();
+    startProceduralSirenScheduler();
+  }
+
+  // Play standard bgm as well if enabled
+  music.volume = musicToggle && !musicToggle.checked ? 0.0 : 0.22;
   music.play().catch(() => {});
+}
+
+// Layer 1: Ambient Wind Noise
+function startProceduralWind() {
+  if (!audioContext) return;
+  
+  const bufferSize = audioContext.sampleRate * 2; // 2 seconds of noise
+  const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+  const output = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    output[i] = Math.random() * 2 - 1;
+  }
+
+  const whiteNoise = audioContext.createBufferSource();
+  whiteNoise.buffer = noiseBuffer;
+  whiteNoise.loop = true;
+
+  const windFilter = audioContext.createBiquadFilter();
+  windFilter.type = "bandpass";
+  windFilter.frequency.value = 350;
+  windFilter.Q.value = 2.0;
+
+  const windGain = audioContext.createGain();
+  windGain.gain.value = 0.08;
+
+  // Modulate wind intensity dynamically over time using LFO
+  const lfo = audioContext.createOscillator();
+  lfo.frequency.value = 0.08; // Very slow modulation
+  const lfoGain = audioContext.createGain();
+  lfoGain.gain.value = 150; // Pitch swing range
+
+  lfo.connect(lfoGain);
+  lfoGain.connect(windFilter.frequency);
+  whiteNoise.connect(windFilter);
+  windFilter.connect(windGain);
+  windGain.connect(masterGain);
+
+  lfo.start();
+  whiteNoise.start();
+  
+  windNode = { whiteNoise, lfo, windGain };
+}
+
+// Layer 2: Fear & Hunger Inspired Horror Drone OST
+function startProceduralDrone() {
+  if (!audioContext) return;
+
+  const freqs = [55, 55.4, 82.4, 110]; // Low detuned E / A chord elements
+  droneOscs = freqs.map((freq, idx) => {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    
+    osc.type = idx % 2 === 0 ? "sawtooth" : "triangle";
+    osc.frequency.value = freq + (Math.random() - 0.5) * 0.8; // Detune slightly
+    
+    // Oppressive breathing/swelling volume modulation
+    const lfo = audioContext.createOscillator();
+    lfo.frequency.value = 0.12 + idx * 0.03;
+    const lfoGain = audioContext.createGain();
+    lfoGain.gain.value = 0.02;
+
+    const filter = audioContext.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 180 + idx * 40;
+
+    lfo.connect(lfoGain);
+    lfoGain.connect(gain.gain);
+    
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(masterGain);
+
+    // Dynamic base drone levels
+    gain.gain.setValueAtTime(0.04, audioContext.currentTime);
+
+    lfo.start();
+    osc.start();
+    return { osc, lfo, gain };
+  });
+}
+
+// Layer 3: Faint Distant Emergency Siren Scheduler & Groans
+function startProceduralSirenScheduler() {
+  if (!audioContext) return;
+
+  const playDistantSiren = () => {
+    if (state !== "menu") {
+      setTimeout(playDistantSiren, 15000);
+      return;
+    }
+
+    const now = audioContext.currentTime;
+    const sirenOsc = audioContext.createOscillator();
+    const sirenGain = audioContext.createGain();
+    
+    sirenOsc.type = "sine";
+    sirenOsc.frequency.setValueAtTime(260, now);
+    
+    // Slow wailing modulation
+    sirenOsc.frequency.linearRampToValueAtTime(320, now + 2);
+    sirenOsc.frequency.linearRampToValueAtTime(260, now + 4);
+    sirenOsc.frequency.linearRampToValueAtTime(320, now + 6);
+    sirenOsc.frequency.linearRampToValueAtTime(260, now + 8);
+
+    sirenGain.gain.setValueAtTime(0.001, now);
+    sirenGain.gain.linearRampToValueAtTime(0.03, now + 2); // Faint/distant
+    sirenGain.gain.linearRampToValueAtTime(0.001, now + 8);
+
+    sirenOsc.connect(sirenGain);
+    sirenGain.connect(masterGain);
+    sirenOsc.start(now);
+    sirenOsc.stop(now + 8);
+
+    // Schedule next run
+    setTimeout(playDistantSiren, 12000 + Math.random() * 15000);
+  };
+
+  const playDistantGroan = () => {
+    if (state !== "menu") {
+      setTimeout(playDistantGroan, 10000);
+      return;
+    }
+    
+    if (fxToggle && fxToggle.checked) {
+      creepyGrowl(1.5 + Math.random() * 1.0);
+    }
+    setTimeout(playDistantGroan, 14000 + Math.random() * 18000);
+  };
+
+  setTimeout(playDistantSiren, 5000);
+  setTimeout(playDistantGroan, 8000);
+}
+
+// Adjust ambience intensity based on button hover interaction
+function setMenuAmbienceIntensity(isHovering) {
+  if (!audioContext || !droneOscs.length) return;
+  const now = audioContext.currentTime;
+  droneOscs.forEach((drone) => {
+    // Elevate pitch or filter slightly on hover for atmospheric feedback
+    drone.gain.gain.setTargetAtTime(isHovering ? 0.07 : 0.04, now, 0.5);
+  });
 }
 
 function tone(type, frequency, duration, gain, bend = 0) {
@@ -201,34 +417,182 @@ function noiseBurst(duration, gain, filterFreq) {
   source.start(now);
 }
 
+function creepyGrowl(duration = 1.1) {
+  if (!audioContext) return;
+  const now = audioContext.currentTime;
+  const base = 42 + Math.random() * 16;
+  const growlGain = audioContext.createGain();
+  const throat = audioContext.createBiquadFilter();
+  const rasp = audioContext.createWaveShaper();
+  const tremolo = audioContext.createOscillator();
+  const tremoloDepth = audioContext.createGain();
+  const lowVoice = audioContext.createOscillator();
+  const rattleVoice = audioContext.createOscillator();
+  const breathBuffer = audioContext.createBuffer(1, Math.ceil(audioContext.sampleRate * duration), audioContext.sampleRate);
+  const breath = breathBuffer.getChannelData(0);
+
+  for (let i = 0; i < breath.length; i++) {
+    const t = i / audioContext.sampleRate;
+    const pulse = 0.55 + Math.sin(t * 22 + Math.sin(t * 7) * 1.8) * 0.45;
+    breath[i] = (Math.random() * 2 - 1) * pulse * (1 - i / breath.length);
+  }
+
+  const breathSource = audioContext.createBufferSource();
+  breathSource.buffer = breathBuffer;
+  const breathFilter = audioContext.createBiquadFilter();
+  breathFilter.type = "lowpass";
+  breathFilter.frequency.setValueAtTime(360, now);
+  breathFilter.frequency.exponentialRampToValueAtTime(130, now + duration);
+
+  const curve = new Float32Array(256);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = Math.tanh(x * 3.8);
+  }
+  rasp.curve = curve;
+  rasp.oversample = "2x";
+
+  throat.type = "bandpass";
+  throat.frequency.setValueAtTime(115, now);
+  throat.frequency.exponentialRampToValueAtTime(72, now + duration);
+  throat.Q.value = 5.8;
+  growlGain.gain.setValueAtTime(0.001, now);
+  growlGain.gain.exponentialRampToValueAtTime(0.34, now + 0.08);
+  growlGain.gain.setTargetAtTime(0.12, now + duration * 0.58, 0.22);
+  growlGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  tremolo.frequency.value = 8 + Math.random() * 5;
+  tremoloDepth.gain.value = 0.12;
+  tremolo.connect(tremoloDepth);
+  tremoloDepth.connect(growlGain.gain);
+
+  lowVoice.type = "sawtooth";
+  lowVoice.frequency.setValueAtTime(base, now);
+  lowVoice.frequency.exponentialRampToValueAtTime(base * 0.58, now + duration);
+  rattleVoice.type = "square";
+  rattleVoice.frequency.setValueAtTime(base * 1.48, now);
+  rattleVoice.frequency.exponentialRampToValueAtTime(base * 0.9, now + duration * 0.9);
+
+  lowVoice.connect(rasp);
+  rattleVoice.connect(rasp);
+  breathSource.connect(breathFilter);
+  breathFilter.connect(rasp);
+  rasp.connect(throat);
+  throat.connect(growlGain);
+  growlGain.connect(masterGain);
+
+  lowVoice.start(now);
+  rattleVoice.start(now + 0.03);
+  breathSource.start(now);
+  tremolo.start(now);
+  lowVoice.stop(now + duration);
+  rattleVoice.stop(now + duration);
+  breathSource.stop(now + duration);
+  tremolo.stop(now + duration);
+}
+
+function hurtVoice() {
+  if (!audioContext) return;
+  const now = audioContext.currentTime;
+  const isGirl = player.character === "girl";
+  const duration = isGirl ? 0.42 : 0.48;
+  const startPitch = isGirl ? 430 + Math.random() * 80 : 230 + Math.random() * 42;
+  const endPitch = isGirl ? 210 + Math.random() * 28 : 118 + Math.random() * 22;
+  const voice = audioContext.createOscillator();
+  const secondVoice = audioContext.createOscillator();
+  const filter = audioContext.createBiquadFilter();
+  const gain = audioContext.createGain();
+  const breath = audioContext.createBufferSource();
+  const breathGain = audioContext.createGain();
+  const breathFilter = audioContext.createBiquadFilter();
+  const buffer = audioContext.createBuffer(1, Math.ceil(audioContext.sampleRate * duration), audioContext.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let i = 0; i < data.length; i++) {
+    const fade = 1 - i / data.length;
+    data[i] = (Math.random() * 2 - 1) * fade;
+  }
+
+  voice.type = isGirl ? "triangle" : "sawtooth";
+  secondVoice.type = "triangle";
+  voice.frequency.setValueAtTime(startPitch, now);
+  secondVoice.frequency.setValueAtTime(startPitch * 0.51, now);
+  voice.frequency.exponentialRampToValueAtTime(endPitch, now + duration);
+  secondVoice.frequency.exponentialRampToValueAtTime(endPitch * 0.58, now + duration);
+  filter.type = "bandpass";
+  filter.frequency.value = isGirl ? 760 : 390;
+  filter.Q.value = isGirl ? 3.4 : 2.6;
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.exponentialRampToValueAtTime(isGirl ? 0.26 : 0.3, now + 0.025);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  breath.buffer = buffer;
+  breathFilter.type = "highpass";
+  breathFilter.frequency.value = isGirl ? 760 : 430;
+  breathGain.gain.setValueAtTime(0.08, now);
+  breathGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  voice.connect(filter);
+  secondVoice.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+  breath.connect(breathFilter);
+  breathFilter.connect(breathGain);
+  breathGain.connect(masterGain);
+
+  voice.start(now);
+  secondVoice.start(now + 0.015);
+  breath.start(now + 0.02);
+  voice.stop(now + duration);
+  secondVoice.stop(now + duration);
+  breath.stop(now + duration);
+}
+
 const sfx = {
   shoot() {
+    if (fxToggle && !fxToggle.checked) return;
     noiseBurst(0.16, 0.5, 1900);
     tone("square", 94, 0.1, 0.22, -42);
   },
   zombie() {
-    tone("sawtooth", 78 + Math.random() * 32, 0.72, 0.16, -28);
-    noiseBurst(0.45, 0.12, 420);
+    if (fxToggle && !fxToggle.checked) return;
+    creepyGrowl(0.95 + Math.random() * 0.45);
+    setTimeout(() => tone("sawtooth", 36 + Math.random() * 12, 0.58, 0.1, -12), 120);
   },
   hit() {
+    if (fxToggle && !fxToggle.checked) return;
     noiseBurst(0.15, 0.32, 720);
     tone("triangle", 180, 0.12, 0.14, -60);
   },
   hurt() {
-    tone("sawtooth", 52, 0.38, 0.24, -18);
-    noiseBurst(0.3, 0.22, 300);
+    if (fxToggle && !fxToggle.checked) return;
+    hurtVoice();
+    noiseBurst(0.18, 0.16, 520);
   },
   pickup() {
+    if (fxToggle && !fxToggle.checked) return;
     tone("sine", 420, 0.1, 0.16, 150);
     tone("sine", 720, 0.11, 0.12, 40);
   },
   empty() {
+    if (fxToggle && !fxToggle.checked) return;
     tone("square", 120, 0.08, 0.12, -40);
   },
   win() {
+    if (fxToggle && !fxToggle.checked) return;
     tone("sine", 330, 0.2, 0.18, 110);
     setTimeout(() => tone("sine", 550, 0.24, 0.18, 160), 140);
   },
+  // Horror style UI feedback sounds
+  uiHover() {
+    if (fxToggle && !fxToggle.checked) return;
+    tone("triangle", 110, 0.06, 0.12, -20);
+  },
+  uiClick() {
+    if (fxToggle && !fxToggle.checked) return;
+    tone("sine", 160, 0.14, 0.2, -40);
+    setTimeout(() => tone("square", 80, 0.08, 0.1, -30), 40);
+  }
 };
 
 function startGame(fresh) {
@@ -236,11 +600,15 @@ function startGame(fresh) {
   if (fresh || !gameStarted) resetGame();
   gameStarted = true;
   state = "playing";
-  continueButton.disabled = false;
   menu.classList.add("hidden");
   touchControls.classList.remove("hidden");
   if (matchMedia("(pointer: fine)").matches) {
-    canvas.requestPointerLock?.();
+    try {
+      const pointerLockRequest = canvas.requestPointerLock?.();
+      pointerLockRequest?.catch?.(() => {});
+    } catch {
+      // Pointer lock is optional; touch and drag look controls still work.
+    }
   }
 }
 
@@ -248,9 +616,18 @@ function showMenu() {
   state = "menu";
   menu.classList.remove("hidden");
   touchControls.classList.add("hidden");
-  continueButton.disabled = !gameStarted;
+  
+  // Ensure the main navigation menu buttons are displayed, while select survivor/settings are hidden
+  if (characterSelectContainer) characterSelectContainer.classList.add("hidden");
+  if (settingsPanel) settingsPanel.classList.add("hidden");
+  if (mainMenuActions) mainMenuActions.classList.remove("hidden");
+  
   resetMoveControl();
-  document.exitPointerLock?.();
+  try {
+    document.exitPointerLock?.();
+  } catch {
+    // Some mobile browsers expose the API but reject calls outside user gestures.
+  }
 }
 
 function castRay(angle) {
@@ -420,9 +797,11 @@ function updateParticles(dt) {
 
 function drawSkyAndFloor() {
   if (images.skybox) {
-    const offset = (player.angle / (Math.PI * 2)) * (images.skybox.width - W);
-    ctx.drawImage(images.skybox, -offset, 0, images.skybox.width, HALF_H);
-    if (offset > images.skybox.width - W) ctx.drawImage(images.skybox, images.skybox.width - offset, 0, images.skybox.width, HALF_H);
+    const skyWidth = Math.max(W, (images.skybox.width / images.skybox.height) * HALF_H);
+    const offset = ((player.angle / (Math.PI * 2)) * skyWidth) % skyWidth;
+    ctx.drawImage(images.skybox, -offset, 0, skyWidth, HALF_H);
+    ctx.drawImage(images.skybox, skyWidth - offset, 0, skyWidth, HALF_H);
+    if (skyWidth < W * 2) ctx.drawImage(images.skybox, skyWidth * 2 - offset, 0, skyWidth, HALF_H);
   } else {
     ctx.fillStyle = "#151922";
     ctx.fillRect(0, 0, W, HALF_H);
@@ -467,24 +846,45 @@ function drawWalls() {
   }
 }
 
+function spriteHasClearDepth(x, width, dist) {
+  const left = Math.max(0, x);
+  const right = Math.min(W - 1, x + width);
+  if (right <= 0 || left >= W) return false;
+  const samples = [
+    left,
+    left + (right - left) * 0.25,
+    left + (right - left) * 0.5,
+    left + (right - left) * 0.75,
+    right,
+  ];
+  return samples.some((sampleX) => {
+    const rayIndex = clamp(Math.floor(sampleX / WALL_SCALE), 0, zBuffer.length - 1);
+    return dist <= zBuffer[rayIndex] + SPRITE_OCCLUSION_PAD;
+  });
+}
+
 function projectSprite(entity, image, size = 0.85, tint = null) {
   const dx = entity.x - player.x;
   const dy = entity.y - player.y;
   const theta = Math.atan2(dy, dx);
   const delta = angleDelta(theta, player.angle);
   const dist = Math.hypot(dx, dy);
-  if (Math.abs(delta) > FOV * 0.76 || dist < 0.35) return;
+  if (Math.abs(delta) > FOV * 0.92 || dist < 0.35) return;
   const screenX = HALF_W + Math.tan(delta) * SCREEN_DIST;
-  const projected = (SCREEN_DIST / dist) * size;
-  const rayIndex = Math.floor(screenX / WALL_SCALE);
-  if (rayIndex < 0 || rayIndex >= zBuffer.length || dist > zBuffer[rayIndex] + 0.15) return;
-
+  const projected = Math.max(6, (SCREEN_DIST / dist) * size);
   const height = projected * (entity.health <= 0 ? Math.max(0.18, 1 - entity.deadTime) : 1);
   const width = projected;
   const x = screenX - width / 2;
   const y = HALF_H - height / 2 + projected * 0.22 + player.bob;
-  if (image) {
-    ctx.drawImage(image, x, y, width, height);
+  if (!spriteHasClearDepth(x, width, dist)) return;
+
+  if (image?.complete && image.naturalWidth > 0) {
+    try {
+      ctx.drawImage(image, x, y, width, height);
+    } catch {
+      ctx.fillStyle = tint || "#354d38";
+      ctx.fillRect(x, y, width, height);
+    }
     if (tint) {
       ctx.globalCompositeOperation = "source-atop";
       ctx.fillStyle = tint;
@@ -515,20 +915,23 @@ function drawSprites() {
 
 function drawWeapon() {
   const recoil = muzzleFlash > 0 ? 24 : 0;
+  const weaponScale = clamp(Math.min(W / 800, H / 600), 0.72, 1.08);
+  const weaponSize = 290 * weaponScale;
+  const weaponY = H - 230 * weaponScale + recoil + player.bob;
   if (images.weapon) {
-    ctx.drawImage(images.weapon, HALF_W - 145, H - 230 + recoil + player.bob, 290, 290);
+    ctx.drawImage(images.weapon, HALF_W - weaponSize / 2, weaponY, weaponSize, weaponSize);
   } else {
     ctx.fillStyle = "#363638";
-    ctx.fillRect(HALF_W - 52, H - 135 + recoil, 104, 135);
+    ctx.fillRect(HALF_W - 52 * weaponScale, H - 135 * weaponScale + recoil, 104 * weaponScale, 135 * weaponScale);
   }
   if (muzzleFlash > 0) {
     ctx.save();
-    ctx.translate(HALF_W, H - 222 + player.bob);
+    ctx.translate(HALF_W, H - 222 * weaponScale + player.bob);
     const pulse = muzzleFlash / 0.16;
     ctx.fillStyle = `rgba(255, 220, 82, ${pulse})`;
     ctx.beginPath();
     for (let i = 0; i < 16; i++) {
-      const r = (i % 2 ? 26 : 86) * pulse;
+      const r = (i % 2 ? 26 : 86) * pulse * weaponScale;
       const a = (Math.PI * 2 * i) / 16;
       ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
     }
@@ -547,28 +950,34 @@ function drawWeapon() {
 }
 
 function drawHud() {
-  ctx.font = "22px Arial";
+  const hudFont = clamp(W * 0.028, 15, 22);
+  const pad = clamp(W * 0.022, 12, 18);
+  const mapW = clamp(W * 0.18, 96, 132);
+  const mapH = mapW * (96 / 132);
+  ctx.font = `${hudFont}px Arial`;
   ctx.fillStyle = "#f44343";
-  ctx.fillText(`Health: ${Math.ceil(player.health)}`, 18, H - 24);
+  ctx.fillText(`Health: ${Math.ceil(player.health)}`, pad, H - pad);
   ctx.fillStyle = "#6aa7ff";
-  ctx.fillText(`Ammo: ${player.ammo}`, W - 130, H - 24);
+  ctx.textAlign = "right";
+  ctx.fillText(`Ammo: ${player.ammo}`, W - pad, H - pad);
+  ctx.textAlign = "left";
   ctx.fillStyle = "#62df72";
-  ctx.fillText(`Zombies: ${zombies.filter((z) => z.alive && z.health > 0).length}`, 18, 30);
+  ctx.fillText(`Zombies: ${zombies.filter((z) => z.alive && z.health > 0).length}`, pad, pad + hudFont);
   ctx.fillStyle = "rgba(0,0,0,0.42)";
-  ctx.fillRect(W - 150, 18, 132, 96);
-  const sx = 132 / level[0].length;
-  const sy = 96 / level.length;
+  ctx.fillRect(W - mapW - pad, pad, mapW, mapH);
+  const sx = mapW / level[0].length;
+  const sy = mapH / level.length;
   for (let y = 0; y < level.length; y++) {
     for (let x = 0; x < level[y].length; x++) {
       if (level[y][x]) {
         ctx.fillStyle = level[y][x] === 3 ? "#4ccd73" : "#6d6d72";
-        ctx.fillRect(W - 150 + x * sx, 18 + y * sy, sx, sy);
+        ctx.fillRect(W - mapW - pad + x * sx, pad + y * sy, sx, sy);
       }
     }
   }
   ctx.fillStyle = "#54eb67";
   ctx.beginPath();
-  ctx.arc(W - 150 + player.x * sx, 18 + player.y * sy, 3, 0, Math.PI * 2);
+  ctx.arc(W - mapW - pad + player.x * sx, pad + player.y * sy, clamp(mapW * 0.024, 2, 3), 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -587,7 +996,7 @@ function drawEffects(dt) {
   if (state === "dead" || state === "win") {
     ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
     ctx.fillRect(0, 0, W, H);
-    ctx.font = "bold 62px Arial";
+    ctx.font = `bold ${clamp(W * 0.08, 34, 62)}px Arial`;
     ctx.textAlign = "center";
     ctx.fillStyle = state === "win" ? "#69e978" : "#e03131";
     ctx.fillText(state === "win" ? "YOU SURVIVED" : "GAME OVER", HALF_W, HALF_H);
@@ -620,11 +1029,143 @@ function update(dt, time) {
   updateParticles(dt);
 }
 
+// Redesigned Title Screen Particles & Effects System
+let menuParticles = [];
+let logoBloodDrips = [];
+let menuTime = 0;
+
+function initMenuEffects() {
+  menuParticles = [];
+  // Initialize floating dust and fog particles
+  for (let i = 0; i < 60; i++) {
+    menuParticles.push({
+      x: Math.random() * 800,
+      y: Math.random() * 600,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: -0.2 - Math.random() * 0.5,
+      size: 1 + Math.random() * 3,
+      alpha: 0.1 + Math.random() * 0.5,
+      type: Math.random() > 0.4 ? "dust" : "fog",
+      scale: 10 + Math.random() * 30
+    });
+  }
+
+  // Logo blood drips initialization
+  logoBloodDrips = [];
+  for (let i = 0; i < 15; i++) {
+    logoBloodDrips.push({
+      x: 120 + i * 40,
+      y: 60 + Math.random() * 15,
+      length: 5 + Math.random() * 25,
+      speed: 0.05 + Math.random() * 0.15,
+      dripState: Math.random() * Math.PI
+    });
+  }
+}
+
+function updateAndDrawMenuEffects(dt) {
+  if (!menuEffectsCanvas || !menuEffectsCtx) return;
+  
+  const w = menuEffectsCanvas.width = menuEffectsCanvas.clientWidth || 800;
+  const h = menuEffectsCanvas.height = menuEffectsCanvas.clientHeight || 600;
+  
+  menuTime += dt;
+  menuEffectsCtx.clearRect(0, 0, w, h);
+
+  // 1. Draw Abandoned Hospital corridor silhouette (horror mood styling)
+  const grad = menuEffectsCtx.createLinearGradient(w / 2, 0, w / 2, h);
+  grad.addColorStop(0, "#050202");
+  grad.addColorStop(0.5, "#0c0505");
+  grad.addColorStop(1, "#020101");
+  menuEffectsCtx.fillStyle = grad;
+  menuEffectsCtx.fillRect(0, 0, w, h);
+
+  // Horror lighting flicker: occasional dimming / red alert flash
+  let flickerIntensity = 0.15;
+  const cycle = (menuTime * 2) % 10;
+  if (cycle > 8.8 || cycle < 0.2 || (cycle > 4.0 && cycle < 4.15)) {
+    // Flicker moment
+    flickerIntensity = Math.random() > 0.5 ? 0.35 : 0.05;
+  }
+  
+  // Ambient Red glow from emergency siren
+  const redGlow = menuEffectsCtx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w * 0.8);
+  redGlow.addColorStop(0, `rgba(180, 15, 20, ${flickerIntensity})`);
+  redGlow.addColorStop(1, "rgba(0, 0, 0, 0.9)");
+  menuEffectsCtx.fillStyle = redGlow;
+  menuEffectsCtx.fillRect(0, 0, w, h);
+
+  // 2. Draw Distant Zombie Silhouettes
+  menuEffectsCtx.fillStyle = "rgba(10, 5, 5, 0.72)";
+  // Left zombie silhouette
+  const zLeftX = w * 0.2 + Math.sin(menuTime * 0.5) * 8;
+  menuEffectsCtx.beginPath();
+  menuEffectsCtx.moveTo(zLeftX, h - 80);
+  menuEffectsCtx.quadraticCurveTo(zLeftX + 15, h - 180, zLeftX + 8, h - 220); // body
+  menuEffectsCtx.arc(zLeftX + 8, h - 235, 12, 0, Math.PI * 2); // head
+  menuEffectsCtx.lineTo(zLeftX + 2, h - 80);
+  menuEffectsCtx.fill();
+
+  // Right zombie silhouette
+  const zRightX = w * 0.75 + Math.cos(menuTime * 0.4) * 6;
+  menuEffectsCtx.beginPath();
+  menuEffectsCtx.moveTo(zRightX, h - 60);
+  menuEffectsCtx.quadraticCurveTo(zRightX - 10, h - 140, zRightX - 5, h - 190); // body
+  menuEffectsCtx.arc(zRightX - 5, h - 202, 10, 0, Math.PI * 2); // head
+  menuEffectsCtx.lineTo(zRightX - 2, h - 60);
+  menuEffectsCtx.fill();
+
+  // 3. Draw and Update Particles (Dust & Fog)
+  menuParticles.forEach((p) => {
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // Wrap around borders
+    if (p.x < 0) p.x = w;
+    if (p.x > w) p.x = 0;
+    if (p.y < 0) p.y = h;
+    if (p.y > h) p.y = 0;
+
+    if (p.type === "dust") {
+      menuEffectsCtx.fillStyle = `rgba(255, 255, 255, ${p.alpha * (0.3 + Math.sin(menuTime + p.x) * 0.2)})`;
+      menuEffectsCtx.beginPath();
+      menuEffectsCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      menuEffectsCtx.fill();
+    } else {
+      // Fog particles
+      const fogGrad = menuEffectsCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.scale);
+      fogGrad.addColorStop(0, `rgba(100, 30, 30, ${p.alpha * 0.15})`);
+      fogGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+      menuEffectsCtx.fillStyle = fogGrad;
+      menuEffectsCtx.beginPath();
+      menuEffectsCtx.arc(p.x, p.y, p.scale, 0, Math.PI * 2);
+      menuEffectsCtx.fill();
+    }
+  });
+
+  // 4. Logo blood drips animation & rendering on canvas
+  logoBloodDrips.forEach((d) => {
+    d.dripState += d.speed;
+    const currentLen = d.length + Math.sin(d.dripState) * 6;
+    
+    // Scale X positioning dynamically with canvas width
+    const logoX = w / 2 - 200 + (d.x / 400) * 300;
+    const logoY = h * 0.18 + Math.max(10, (w / 1000) * 20);
+
+    menuEffectsCtx.fillStyle = "rgba(160, 10, 15, 0.85)";
+    menuEffectsCtx.beginPath();
+    menuEffectsCtx.moveTo(logoX, logoY);
+    menuEffectsCtx.lineTo(logoX + 3, logoY + currentLen);
+    menuEffectsCtx.arc(logoX + 1.5, logoY + currentLen, 2.5, 0, Math.PI * 2);
+    menuEffectsCtx.fill();
+  });
+}
+
 function loop(time) {
   const dt = Math.min(0.05, (time - lastTime) / 1000);
   lastTime = time;
   if (!gameStarted) {
-    ctx.clearRect(0, 0, W, H);
+    updateAndDrawMenuEffects(dt);
   } else {
     update(dt, time);
     render(dt);
@@ -632,8 +1173,9 @@ function loop(time) {
   requestAnimationFrame(loop);
 }
 
-function rotateView(deltaX) {
-  player.angle = normalizeAngle(player.angle + deltaX * 0.0042);
+function rotateView(deltaX, pointerType = "mouse") {
+  const sensitivity = pointerType === "touch" ? TOUCH_LOOK_SENSITIVITY : MOUSE_DRAG_SENSITIVITY;
+  player.angle = normalizeAngle(player.angle + clamp(deltaX, -90, 90) * sensitivity);
 }
 
 function resetMoveControl() {
@@ -686,7 +1228,7 @@ function updateLookDrag(event) {
   if (Math.hypot(event.clientX - lookDrag.startX, event.clientY - lookDrag.startY) > 6) {
     lookDrag.moved = true;
   }
-  rotateView(dx);
+  rotateView(dx, event.pointerType);
 }
 
 function endLookDrag(event) {
@@ -721,14 +1263,28 @@ function endMoveTouch(event) {
   resetMoveControl();
 }
 
+function resetInputState() {
+  keys.clear();
+  lookDrag = null;
+  resetMoveControl();
+}
+
 window.addEventListener("keydown", (event) => {
   keys.add(event.code);
   if (event.code === "Escape" && state === "playing") showMenu();
-  if (event.code === "Enter" && state === "menu") startGame(!gameStarted);
-  if (event.code === "KeyC" && state === "menu" && gameStarted) startGame(false);
+  if (event.code === "Enter" && state === "menu" && !characterSelectContainer.classList.contains("hidden")) {
+    startGame(true);
+  }
 });
 
 window.addEventListener("keyup", (event) => keys.delete(event.code));
+window.addEventListener("resize", resizeCanvas, { passive: true });
+window.visualViewport?.addEventListener("resize", resizeCanvas, { passive: true });
+window.addEventListener("orientationchange", () => setTimeout(resizeCanvas, 120), { passive: true });
+window.addEventListener("blur", resetInputState);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) resetInputState();
+});
 canvas.addEventListener("pointerdown", beginLookDrag);
 canvas.addEventListener("pointermove", updateLookDrag);
 canvas.addEventListener("pointerup", endLookDrag);
@@ -739,7 +1295,7 @@ document.addEventListener("pointerlockchange", () => {
 });
 document.addEventListener("mousemove", (event) => {
   if (state === "playing" && mouseLocked) {
-    player.angle = normalizeAngle(player.angle + event.movementX * 0.0024);
+    player.angle = normalizeAngle(player.angle + event.movementX * POINTER_LOCK_SENSITIVITY);
   }
 });
 movePad.addEventListener("pointerdown", beginMoveTouch);
@@ -752,10 +1308,120 @@ shootButton.addEventListener("pointerdown", (event) => {
   fireWeapon();
 });
 
-startButton.addEventListener("click", () => startGame(true));
-continueButton.addEventListener("click", () => {
-  if (gameStarted) startGame(false);
+// Character Selection Event Handling
+for (const button of characterButtons) {
+  button.addEventListener("click", () => {
+    ensureAudio();
+    sfx.uiClick();
+    setCharacter(button.dataset.character);
+  });
+}
+
+// ----------------- REDESIGNED TITLE MENU INTERFACES -----------------
+
+// Navigation hover sound triggers
+const menuButtons = [...document.querySelectorAll(".menu-btn, .character-option")];
+menuButtons.forEach(btn => {
+  btn.addEventListener("mouseenter", () => {
+    ensureAudio();
+    sfx.uiHover();
+    setMenuAmbienceIntensity(true);
+  });
+  btn.addEventListener("mouseleave", () => {
+    setMenuAmbienceIntensity(false);
+  });
 });
+
+// PLAY Flow: transitions to Character Selection Screen
+if (playBtn) {
+  playBtn.addEventListener("click", () => {
+    ensureAudio();
+    sfx.uiClick();
+    mainMenuActions.classList.add("hidden");
+    characterSelectContainer.classList.remove("hidden");
+  });
+}
+
+// START GAME from Select Survivor Screen
+if (confirmCharacterBtn) {
+  confirmCharacterBtn.addEventListener("click", () => {
+    ensureAudio();
+    sfx.uiClick();
+    startGame(true);
+  });
+}
+
+// BACK Button: Select Survivor -> Main Menu
+if (backToMenuBtn) {
+  backToMenuBtn.addEventListener("click", () => {
+    ensureAudio();
+    sfx.uiClick();
+    characterSelectContainer.classList.add("hidden");
+    mainMenuActions.classList.remove("hidden");
+  });
+}
+
+// SETTINGS Open
+if (settingsBtn) {
+  settingsBtn.addEventListener("click", () => {
+    ensureAudio();
+    sfx.uiClick();
+    mainMenuActions.classList.add("hidden");
+    settingsPanel.classList.remove("hidden");
+  });
+}
+
+// SETTINGS Close
+if (closeSettingsBtn) {
+  closeSettingsBtn.addEventListener("click", () => {
+    ensureAudio();
+    sfx.uiClick();
+    settingsPanel.classList.add("hidden");
+    mainMenuActions.classList.remove("hidden");
+  });
+}
+
+// EXIT button flow
+if (exitBtn) {
+  exitBtn.addEventListener("click", () => {
+    ensureAudio();
+    sfx.uiClick();
+    if (confirm("Are you sure you want to exit?")) {
+      window.close();
+    }
+  });
+}
+
+// Master volume slider behavior
+if (masterVolumeRange) {
+  masterVolumeRange.addEventListener("input", (e) => {
+    ensureAudio();
+    if (masterGain) {
+      masterGain.gain.value = Number(e.target.value) / 100;
+    }
+  });
+}
+
+// Sound settings toggles
+if (musicToggle) {
+  musicToggle.addEventListener("change", (e) => {
+    ensureAudio();
+    if (music) {
+      music.volume = e.target.checked ? 0.22 : 0.0;
+    }
+    // Procedural drone level adjusting
+    if (droneOscs.length) {
+      const droneVol = e.target.checked ? 0.04 : 0.0;
+      droneOscs.forEach(drone => {
+        drone.gain.gain.setValueAtTime(droneVol, audioContext.currentTime);
+      });
+    }
+  });
+}
+
+setCharacter(player.character);
+resizeCanvas();
+initMenuEffects();
 
 Promise.all([
   loadImage("wall", "wall.png"),

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
     <title>Zombie Outbreak</title>
     <link rel="stylesheet" href="style.css" />
   </head>
@@ -10,15 +10,68 @@
     <main class="shell" aria-label="Zombie Outbreak game">
       <canvas id="game" width="800" height="600"></canvas>
 
+      <!-- Redesigned Title Screen / Menu Overlay -->
       <section id="menu" class="menu">
-        <div class="brand">
-          <h1>Zombie Outbreak</h1>
-          <p>Survive the halls. Find the exit.</p>
-          <p class="credit">Made by Dionimar Flores</p>
-        </div>
-        <div class="actions">
-          <button id="startButton" type="button">Start</button>
-          <button id="continueButton" type="button" disabled>Continue</button>
+        <!-- Canvas for title menu fog, dust, and visual horror effects -->
+        <canvas id="menuEffects" class="menu-effects"></canvas>
+
+        <div class="menu-content-wrapper">
+          <div class="brand">
+            <h1 id="logoContainer">
+              <span class="logo-text">Zombie Outbreak</span>
+              <span class="blood-drips"></span>
+            </h1>
+            <p class="subtitle">Survive the halls. Find the exit.</p>
+            <p class="credit">Made by Dionimar Flores</p>
+          </div>
+
+          <!-- Title screen main navigation buttons -->
+          <div id="mainMenuActions" class="actions">
+            <button id="playBtn" class="menu-btn" type="button">PLAY</button>
+            <button id="settingsBtn" class="menu-btn" type="button">SETTINGS</button>
+            <button id="exitBtn" class="menu-btn" type="button">EXIT</button>
+          </div>
+
+          <!-- Character selection screen - Hidden initially, appears when pressing PLAY -->
+          <div id="characterSelectContainer" class="character-select-screen hidden">
+            <h2 class="section-title">SELECT SURVIVOR</h2>
+            <div id="characterSelect" class="character-select" role="radiogroup" aria-label="Choose character">
+              <button id="boyCharacter" class="character-option selected" type="button" aria-pressed="true" data-character="boy">
+                <div class="img-frame">
+                  <img src="assets/character-boy.png" alt="Boy Survivor" />
+                </div>
+                <span>Boy</span>
+              </button>
+              <button id="girlCharacter" class="character-option" type="button" aria-pressed="false" data-character="girl">
+                <div class="img-frame">
+                  <img src="assets/character-girl.png" alt="Girl Survivor" />
+                </div>
+                <span>Girl</span>
+              </button>
+            </div>
+            <div class="character-actions">
+              <button id="confirmCharacterBtn" class="menu-btn" type="button">START GAME</button>
+              <button id="backToMenuBtn" class="menu-btn secondary-btn" type="button">BACK</button>
+            </div>
+          </div>
+
+          <!-- Settings panel -->
+          <div id="settingsPanel" class="settings-panel hidden">
+            <h2 class="section-title">SETTINGS</h2>
+            <div class="setting-item">
+              <label for="masterVolumeRange">MASTER VOLUME</label>
+              <input type="range" id="masterVolumeRange" min="0" max="100" value="50" />
+            </div>
+            <div class="setting-item">
+              <label for="musicToggle">AMBIENT OST</label>
+              <input type="checkbox" id="musicToggle" checked />
+            </div>
+            <div class="setting-item">
+              <label for="fxToggle">SOUND EFFECTS</label>
+              <input type="checkbox" id="fxToggle" checked />
+            </div>
+            <button id="closeSettingsBtn" class="menu-btn" type="button">CLOSE</button>
+          </div>
         </div>
       </section>
 

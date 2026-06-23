@@ -1,15 +1,26 @@
+/* Import premium horror pixel fonts or gothic horror fonts */
+@import url('https://fonts.googleapis.com/css2?family=Creepster&family=Special+Elite&display=swap');
+
 :root {
   color-scheme: dark;
-  font-family: Arial, Helvetica, sans-serif;
-  background: #07080a;
+  font-family: 'Special Elite', Courier, monospace, Arial, sans-serif;
+  background: #030305;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
+  width: 100%;
   min-height: 100vh;
+  min-height: 100svh;
   margin: 0;
   display: grid;
   place-items: center;
@@ -17,24 +28,27 @@ body {
   overscroll-behavior: none;
   touch-action: none;
   background:
-    radial-gradient(circle at 50% 20%, rgba(120, 28, 28, 0.24), transparent 38%),
-    linear-gradient(180deg, #07080a 0%, #151010 100%);
+    radial-gradient(circle at 50% 50%, rgba(130, 10, 10, 0.18), transparent 60%),
+    linear-gradient(180deg, #030305 0%, #0c0808 100%);
 }
 
 .shell {
   position: relative;
   width: min(100vw, calc(100vh * 4 / 3));
+  width: min(100vw, calc(100svh * 4 / 3));
   aspect-ratio: 4 / 3;
   max-width: 1000px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58);
-  background: #050607;
+  max-height: 100svh;
+  box-shadow: 0 0 100px rgba(0, 0, 0, 0.95);
+  background: #020203;
+  overflow: hidden;
 }
 
 canvas {
   display: block;
   width: 100%;
   height: 100%;
-  image-rendering: auto;
+  image-rendering: pixelated;
   cursor: crosshair;
   touch-action: none;
   user-select: none;
@@ -47,77 +61,323 @@ canvas {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 28px;
-  padding: 32px;
+  padding:
+    max(22px, env(safe-area-inset-top))
+    max(18px, env(safe-area-inset-right))
+    max(22px, env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
   text-align: center;
-  background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.72)),
-    url("menu_wallpaper.png") center / cover no-repeat;
+  overflow: hidden;
+  background: black;
+  animation: menuFadeIn 1.5s ease-out forwards;
+}
+
+@keyframes menuFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Background canvas for dust/fog particles, silhouettes, flickering etc */
+.menu-effects {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.menu-content-wrapper {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(20px, 4.5vh, 45px);
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.85) 100%);
 }
 
 .menu.hidden {
-  display: none;
+  display: none !important;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
 }
 
 .brand h1 {
+  position: relative;
   margin: 0;
-  color: #eee9d6;
-  font-size: clamp(42px, 9vw, 90px);
-  line-height: 0.92;
+  color: #c81d25;
+  font-family: 'Creepster', cursive, Impact, sans-serif;
+  font-size: clamp(48px, 10vw, 96px);
+  line-height: 1;
   text-transform: uppercase;
-  text-shadow: 4px 5px 0 #100304, 0 0 28px rgba(180, 16, 16, 0.75);
+  letter-spacing: 2px;
+  text-shadow: 
+    0px 0px 10px rgba(200, 29, 37, 0.6),
+    0px 0px 30px rgba(200, 29, 37, 0.3),
+    4px 4px 0px #1a0505;
+  animation: logoFlicker 6s infinite alternate;
 }
 
-.brand p {
-  margin: 16px 0 0;
-  color: #ded9bd;
-  font-size: clamp(16px, 2.8vw, 24px);
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.78);
+@keyframes logoFlicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+    text-shadow: 
+      0px 0px 10px rgba(200, 29, 37, 0.6),
+      0px 0px 30px rgba(200, 29, 37, 0.3),
+      4px 4px 0px #1a0505;
+    color: #c81d25;
+  }
+  20%, 24%, 55% {
+    text-shadow: 0px 0px 2px rgba(200, 29, 37, 0.2), 2px 2px 0px #110202;
+    color: #4a0f12;
+  }
+}
+
+.brand .subtitle {
+  margin: 12px 0 0;
+  color: #8f9296;
+  font-size: clamp(14px, 2.5vh, 20px);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
 }
 
 .brand .credit {
-  margin-top: 10px;
-  color: #f0c857;
-  font-size: clamp(14px, 2.2vw, 18px);
-  font-weight: 700;
+  margin-top: 6px;
+  color: #4c5157;
+  font-size: clamp(10px, 1.8vh, 14px);
+  letter-spacing: 2px;
   text-transform: uppercase;
 }
 
 .actions {
-  display: grid;
-  gap: 12px;
-  width: min(290px, 78vw);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(320px, 85vw);
 }
 
-button {
-  min-height: 56px;
-  border: 2px solid #d04439;
-  border-radius: 8px;
-  color: #fff;
-  background: #9a171e;
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: 0;
+/* Button Stylings - Pixel Art / Horror glow */
+button.menu-btn {
+  position: relative;
+  min-height: 52px;
+  border: 3px solid #1a0f0f;
+  border-radius: 0; /* Pure retro square pixel-art aesthetic */
+  color: #9f9f9f;
+  background: #0f0909;
+  font-family: 'Special Elite', monospace;
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 2px;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 0 8px 0 #120405;
+  box-shadow: 
+    0 6px 0 #000,
+    inset 0 0 10px rgba(0, 0, 0, 0.8);
+  transition: all 0.15s steps(4);
 }
 
-button:hover,
-button:focus-visible {
-  border-color: #f5cb55;
+button.menu-btn:hover,
+button.menu-btn:focus-visible {
+  color: #fff;
+  border-color: #7b181c;
+  background: #2b0b0d;
   outline: none;
-  filter: brightness(1.14);
+  filter: brightness(1.2);
+  box-shadow: 
+    0 6px 0 #000,
+    0 0 15px rgba(200, 29, 37, 0.4),
+    inset 0 0 12px rgba(200, 29, 37, 0.3);
+  transform: translateY(-2px);
 }
 
-button:disabled {
-  border-color: #606066;
-  color: #9b9ba1;
-  background: #2f3035;
-  cursor: default;
+button.menu-btn:active {
+  transform: translateY(4px);
+  box-shadow: 
+    0 2px 0 #000,
+    0 0 20px rgba(200, 29, 37, 0.6);
+}
+
+button.menu-btn:disabled {
+  border-color: #2b2b2b;
+  color: #444;
+  background: #141414;
+  cursor: not-allowed;
+  box-shadow: 0 6px 0 #000;
   filter: none;
+  transform: none;
 }
 
+button.menu-btn.secondary-btn {
+  background: #141517;
+  border-color: #2c2f33;
+}
+button.menu-btn.secondary-btn:hover {
+  background: #212429;
+  border-color: #4f535c;
+  box-shadow: 0 6px 0 #000, 0 0 12px rgba(255,255,255,0.1);
+}
+
+/* Character Selection Panel Layout */
+.character-select-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.section-title {
+  margin: 0 0 4px;
+  color: #8f1d21;
+  font-family: 'Special Elite', monospace;
+  font-size: clamp(20px, 4vh, 28px);
+  letter-spacing: 2px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+}
+
+.character-select {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 20px;
+  width: min(440px, 90vw);
+}
+
+.character-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 12px;
+  border: 3px solid #2a2222;
+  border-radius: 0;
+  background: rgba(10, 8, 8, 0.85);
+  box-shadow: 0 8px 0 #000;
+  cursor: pointer;
+  transition: all 0.2s steps(4);
+}
+
+/* Removal of White Background on characters */
+.character-option .img-frame {
+  width: 100%;
+  height: clamp(100px, 18vh, 160px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  background: transparent; /* Ensure parent has no solid bg */
+}
+
+.character-option img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: 
+    drop-shadow(0 6px 8px rgba(0, 0, 0, 0.8));
+  mix-blend-mode: color-burn; /* Blends and darkens whites to transparent */
+  pointer-events: none;
+}
+
+/* Chrome/Safari transparency support or fallback */
+@supports (mix-blend-mode: multiply) {
+  .character-option img {
+    mix-blend-mode: multiply; /* Extremely effective at removing flat white backgrounds */
+  }
+}
+
+.character-option span {
+  color: #8a8e94;
+  font-family: 'Special Elite', monospace;
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
+.character-option:hover {
+  border-color: #542224;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 0 #000, 0 0 10px rgba(130, 20, 20, 0.3);
+}
+
+.character-option.selected {
+  border-color: #c81d25;
+  background: rgba(45, 12, 14, 0.9);
+  box-shadow: 0 8px 0 #000, 0 0 20px rgba(200, 29, 37, 0.4);
+}
+
+.character-option.selected span {
+  color: #fff;
+  font-weight: bold;
+}
+
+.character-actions {
+  display: flex;
+  gap: 16px;
+  width: min(340px, 85vw);
+  margin-top: 10px;
+}
+.character-actions button {
+  flex: 1;
+}
+
+/* Settings Panel Layout */
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: min(360px, 85vw);
+  padding: 24px;
+  border: 3px solid #332d2d;
+  background: rgba(10, 10, 12, 0.95);
+  box-shadow: 0 12px 0 #000;
+  text-align: left;
+}
+
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-item label {
+  color: #8c9095;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.setting-item input[type="range"] {
+  accent-color: #c81d25;
+  cursor: pointer;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  height: 6px;
+}
+
+.setting-item input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  accent-color: #c81d25;
+  cursor: pointer;
+}
+
+/* Utilities */
+.hidden {
+  display: none !important;
+}
+
+/* Touch controls customization */
 .touch-controls {
   position: absolute;
   inset: 0;
@@ -138,9 +398,9 @@ button:disabled {
 }
 
 .move-pad {
-  left: clamp(18px, 6vw, 52px);
-  bottom: clamp(18px, 7vw, 48px);
-  width: clamp(112px, 22vw, 150px);
+  left: max(clamp(18px, 6vw, 52px), env(safe-area-inset-left));
+  bottom: max(clamp(18px, 7vw, 48px), env(safe-area-inset-bottom));
+  width: clamp(104px, 22vw, 150px);
   aspect-ratio: 1;
   border: 2px solid rgba(235, 235, 220, 0.45);
   border-radius: 50%;
@@ -161,9 +421,9 @@ button:disabled {
 }
 
 .shoot-button {
-  right: clamp(22px, 7vw, 58px);
-  bottom: clamp(30px, 9vw, 72px);
-  width: clamp(82px, 17vw, 118px);
+  right: max(clamp(22px, 7vw, 58px), env(safe-area-inset-right));
+  bottom: max(clamp(30px, 9vw, 72px), env(safe-area-inset-bottom));
+  width: clamp(78px, 17vw, 118px);
   aspect-ratio: 1;
   min-height: 0;
   border-radius: 50%;
@@ -187,6 +447,49 @@ button:disabled {
     width: 100vw;
     height: 100svh;
     max-width: none;
+    max-height: none;
     aspect-ratio: auto;
+    box-shadow: none;
+  }
+}
+
+@media (max-height: 460px) {
+  .menu-content-wrapper {
+    gap: 12px;
+  }
+
+  .brand .subtitle {
+    margin-top: 4px;
+  }
+
+  button.menu-btn {
+    min-height: 40px;
+    font-size: 16px;
+  }
+
+  .character-option {
+    padding: 6px;
+  }
+  .character-option .img-frame {
+    height: clamp(60px, 15vh, 100px);
+  }
+}
+
+@media (max-width: 360px), (max-height: 390px) {
+  .brand h1 {
+    font-size: clamp(32px, 8vw, 56px);
+  }
+
+  .brand .subtitle {
+    font-size: 12px;
+  }
+
+  .character-select {
+    gap: 8px;
+    width: min(330px, 90vw);
+  }
+
+  .character-option {
+    padding: 4px;
   }
 }
