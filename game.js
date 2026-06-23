@@ -674,7 +674,7 @@ function updatePlayer(dt) {
     player.won = true;
     state = "win";
     sfx.win();
-    setTimeout(showMenu, 1700);
+    setTimeout(showMenu, 4000);
   }
 }
 
