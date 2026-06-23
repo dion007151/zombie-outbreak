@@ -43,7 +43,7 @@ const ATTACK_DISTANCE = 0.78;
 const CHASE_DISTANCE = 7;
 let MAX_CANVAS_DPR = 1.5;           // Capped from 2.0 to improve mobile fill-rate performance
 const SPRITE_OCCLUSION_PAD = 0.35;
-const TOUCH_LOOK_SENSITIVITY = 0.0072;  // Increased for responsive small swipe movements
+const TOUCH_LOOK_SENSITIVITY = 0.009;   // Increased to 0.009 for quick, responsive turns in Webviews
 const MOUSE_DRAG_SENSITIVITY = 0.005;    
 const POINTER_LOCK_SENSITIVITY = 0.003;  
 
@@ -53,7 +53,7 @@ const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera
 
 if (isMobileDevice) {
   MAX_CANVAS_DPR = 1.0;  // Force standard resolution (no high-DPR lag)
-  NUM_RAYS = 180;        // Use fast 180-ray projection for smooth framerates on phones
+  NUM_RAYS = 140;        // Lowered to 140 for maximum rendering speed and zero lag in FB Lite WebViews
   RAY_STEP = FOV / NUM_RAYS;
 }
 
