@@ -872,8 +872,8 @@ function projectSprite(entity, image, size = 0.85, tint = null) {
   const delta = angleDelta(theta, player.angle);
   const dist = Math.hypot(dx, dy);
   
-  // Make sure we still render zombies even if they are extremely close (attacking the player)
-  if (Math.abs(delta) > FOV * 1.1 || dist < 0.05) return;
+  // Render sprites at any positive distance. Allow high visibility angles (e.g. half FOV plus breathing room)
+  if (Math.abs(delta) > FOV * 1.5 || dist <= 0.01) return;
   
   const screenX = HALF_W + Math.tan(delta) * SCREEN_DIST;
   const projected = Math.max(6, (SCREEN_DIST / dist) * size);
