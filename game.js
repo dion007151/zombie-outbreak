@@ -869,14 +869,19 @@ function projectSprite(entity, image, size = 0.85, tint = null) {
   const theta = Math.atan2(dy, dx);
   const delta = angleDelta(theta, player.angle);
   const dist = Math.hypot(dx, dy);
-  if (Math.abs(delta) > FOV * 0.92 || dist < 0.35) return;
+  
+  // Make sure we still render zombies even if they are extremely close (attacking the player)
+  if (Math.abs(delta) > FOV * 1.1 || dist < 0.05) return;
+  
   const screenX = HALF_W + Math.tan(delta) * SCREEN_DIST;
   const projected = Math.max(6, (SCREEN_DIST / dist) * size);
   const height = projected * (entity.health <= 0 ? Math.max(0.18, 1 - entity.deadTime) : 1);
   const width = projected;
   const x = screenX - width / 2;
   const y = HALF_H - height / 2 + projected * 0.22 + player.bob;
-  if (!spriteHasClearDepth(x, width, dist)) return;
+  
+  // Bypass z-buffer check for extremely close sprites to avoid clipping into wall boundaries
+  if (dist > 0.45 && !spriteHasClearDepth(x, width, dist)) return;
 
   if (image?.complete && image.naturalWidth > 0) {
     try {
